@@ -2,7 +2,7 @@
 # Builder
 #
 
-FROM golang:1.18-alpine AS builder
+FROM golang:1.18.10-bullseye AS builder
 
 # Create a workspace for the app
 WORKDIR /app
@@ -10,18 +10,13 @@ WORKDIR /app
 # Copy over the files
 COPY . ./
 
+RUN apt-get update
+RUN apt-get install -y libpcap-dev gcc
+
 # Build
-RUN go build -o pcap .
+RUN go build -o pcap-test
+RUN ls
 
-#
-# Runner
-#
 
-FROM alpine AS runner
+ENTRYPOINT ["/app/pcap-test"]
 
-WORKDIR /
-
-# Copy from builder the final binary
-COPY --from=builder /app/pcap /pcap
-
-ENTRYPOINT ["/pcap"]
