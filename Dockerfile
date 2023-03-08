@@ -11,7 +11,7 @@ WORKDIR /app
 COPY . ./
 
 # Build
-RUN go build -o pcap
+RUN go build -o pcap .
 
 #
 # Runner
