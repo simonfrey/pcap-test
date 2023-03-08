@@ -11,16 +11,20 @@ on:
       - main
 
 jobs:
-  docker_publish:
-    runs-on: "ubuntu-20.04"
-
+  build-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v2
-
-      # https://github.com/marketplace/actions/push-to-ghcr
-      - name: Build and publish a Docker image for ${{ github.repository }}
-        uses: macbre/push-to-ghcr@master
+      - uses: 'actions/checkout@v3'
+      - uses: docker/login-action@v2
         with:
-          image_name: ${{ github.repository }}
-          github_token: ${{ secrets.GCR_REGISTRY_TOKEN }}
-          image_tag: ${{ github.sha }}
+          registry: ghcr.io
+          username: _json_key
+          password: ${{ secrets.GCR_REGISTRY_TOKEN }}
+      - uses: docker/setup-buildx-action@v2
+      - uses: docker/build-push-action@v3
+        with:
+          push: true
+          file: Dockerfile
+          tags:
+            ghcr.io/simonfrey/${{ github.repository }}:${{ github.sha }}
