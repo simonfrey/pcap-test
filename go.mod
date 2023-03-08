@@ -1,4 +1,4 @@
-module pcap
+module pcaptest
 
 go 1.16
 
