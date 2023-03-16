@@ -120,6 +120,10 @@ func printPacketInfo(packet gopacket.Packet) {
 			fmt.Println("HTTP found!")
 			buf := bufio.NewReader(bytes.NewReader(applicationLayer.Payload()))
 
+			if strings.HasPrefix(string(applicationLayer.Payload()), "HTTP/1.1") {
+				// We have no "GET/POST/HEAD" skip
+				return
+			}
 			req, err := http.ReadRequest(buf)
 			if err != nil {
 				log.Fatal("could not parse request: ", err)
