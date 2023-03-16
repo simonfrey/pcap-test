@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/pcap"
+	"io"
 	"log"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -114,7 +118,25 @@ func printPacketInfo(packet gopacket.Packet) {
 		// Search for a string inside the payload
 		if strings.Contains(string(applicationLayer.Payload()), "HTTP") {
 			fmt.Println("HTTP found!")
-			fmt.Printf("%s\n", applicationLayer.Payload())
+			buf := bufio.NewReader(bytes.NewReader(applicationLayer.Payload()))
+
+			req, err := http.ReadRequest(buf)
+			if err != nil {
+				log.Fatal("could not parse request: ", err)
+			}
+
+			fmt.Println("<HEADER>")
+			for k, v := range req.Header {
+				fmt.Printf("%s=%s", k, strings.Join(v, ","))
+			}
+
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				log.Fatal("could not read body: ", err)
+			}
+			fmt.Println("<BODY>")
+			fmt.Println(string(body))
+
 		}
 	}
 
