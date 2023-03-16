@@ -111,9 +111,6 @@ func printPacketInfo(packet gopacket.Packet) {
 	// this applicationLayer. applicationLayer contains the payload
 	applicationLayer := packet.ApplicationLayer()
 	if applicationLayer != nil {
-		fmt.Println("Application layer/Payload found.")
-		fmt.Printf("%s\n", applicationLayer.Payload())
-
 		// Search for a string inside the payload
 		if strings.Contains(string(applicationLayer.Payload()), "HTTP") {
 			fmt.Println("HTTP found!")
