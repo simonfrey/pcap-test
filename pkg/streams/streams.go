@@ -81,15 +81,15 @@ func (s *Stream) Print() string {
 		return ""
 	}
 
-	fmt.Printf("%s => %s\n", s.Source, s.Destination)
+	p := fmt.Sprintf("%s => %s\n", s.Source, s.Destination)
 
 	if isRequest(string(payload[:20])) {
 		// We have a request
-		return printRequest(payload)
+		return fmt.Sprintf("%s%s", p, printRequest(payload))
 	}
 
 	// We have a response
-	return printResponse(payload)
+	return fmt.Sprintf("%s%s", p, printResponse(payload))
 }
 
 func printRequest(payload []byte) string {
@@ -103,6 +103,10 @@ func printRequest(payload []byte) string {
 
 	// Filter out healthz requests
 	if strings.Contains(res.URL.Path, "/healthz") {
+		return ""
+	}
+	// Filter out metrics requests
+	if strings.Contains(res.URL.Path, "/metrics") {
 		return ""
 	}
 	// Filter out requests from kubeproxy and google health check
