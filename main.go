@@ -74,6 +74,11 @@ func main() {
 				netFlow := packet.NetworkLayer().NetworkFlow()
 				networkSRC, networkDST := netFlow.Endpoints()
 
+				if !strings.Contains(networkSRC.String(), "10.4.") && !strings.Contains(networkDST.String(), "10.4.") {
+					// Ignore everything that is not pod network
+					continue
+				}
+
 				transportFlow := packet.TransportLayer().TransportFlow()
 				transportSRC, transportDST := transportFlow.Endpoints()
 
