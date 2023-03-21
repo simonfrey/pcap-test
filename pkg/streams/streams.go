@@ -80,14 +80,20 @@ func (s *Stream) Print() string {
 	}
 
 	p := fmt.Sprintf("%s => %s\n", s.Source, s.Destination)
-
+	r := ""
 	if isRequest(string(payload[:20])) {
 		// We have a request
-		return fmt.Sprintf("%s%s\n", p, printRequest(payload))
+		r = printRequest(payload)
+	} else {
+		r = printResponse(payload)
+	}
+
+	if r == "" {
+		return ""
 	}
 
 	// We have a response
-	return fmt.Sprintf("%s%s\n", p, printResponse(payload))
+	return fmt.Sprintf("%s%s\n", p, r)
 }
 
 func printRequest(payload []byte) string {
