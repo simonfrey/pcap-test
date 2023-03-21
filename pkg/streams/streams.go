@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"pcaptest/pkg/tcp_packages"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -107,6 +109,9 @@ func printRequest(payload []byte) string {
 
 	return fmt.Sprintf("%s %s %s\n%s", method, path, httpVersion, strings.Join(headers, "\n"))
 }
+
+var hexRegex = regexp.MustCompile("[0-9a-f]+")
+
 func printResponse(payload []byte) string {
 	lines := strings.Split(string(payload), "\n")
 
@@ -130,10 +135,20 @@ func printResponse(payload []byte) string {
 		headers = append(headers, line)
 	}
 	if chunked {
+		var totalBodySize int64 = 0
 		// We have a chunked response. Load data
 		for _, chunkLine := range lines[lastHeaderIndex:] {
-			fmt.Println("CHUNK DATA:", chunkLine)
+			cleanLine := strings.TrimSpace(strings.ToLower(chunkLine))
+			if hexRegex.MatchString(strings.TrimSpace(strings.ToLower(chunkLine))) {
+				// We have a hex number
+				decimal, err := strconv.ParseInt(cleanLine, 16, 64)
+				if err == nil {
+					totalBodySize += decimal
+				}
+				fmt.Println("CHUNK DATA:", chunkLine, "imt", decimal)
+			}
 		}
+		headers = append(headers, fmt.Sprintf("Content-Length: %d", totalBodySize))
 	}
 
 	return fmt.Sprintf("%s %s\n%s", statusCode, httpVersion, strings.Join(headers, "\n"))
