@@ -110,7 +110,7 @@ func printRequest(payload []byte) string {
 	return fmt.Sprintf("%s %s %s\n%s", method, path, httpVersion, strings.Join(headers, "\n"))
 }
 
-var hexRegex = regexp.MustCompile("[0-9a-f]+")
+var hexRegex = regexp.MustCompile(`^[0-9a-f]+$`)
 
 func printResponse(payload []byte) string {
 	lines := strings.Split(string(payload), "\n")
