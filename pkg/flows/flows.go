@@ -44,6 +44,13 @@ func (f *Flows) PrintFlow(src, dst string) string {
 	return flow.Print()
 }
 
+func (f *Flows) DeleteFlow(src, dst string) {
+	f.flowsMux.Lock()
+	defer f.flowsMux.Unlock()
+	delete(f.flows, fmt.Sprintf("%s%s", src, dst))
+	delete(f.flows, fmt.Sprintf("%s%s", dst, src))
+}
+
 func (f *Flows) AddPackage(src, dst string, p *tcp_packages.Pack) {
 	// Find flow
 	flow := f.GetFlow(src, dst)

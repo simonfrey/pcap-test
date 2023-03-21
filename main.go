@@ -103,6 +103,8 @@ func main() {
 				if tcp.FIN {
 					flow := fs.PrintFlow(src, dst)
 					fmt.Println(flow)
+
+					fs.DeleteFlow(src, dst)
 					continue
 				}
 
