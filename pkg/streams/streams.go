@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"pcaptest/pkg/tcp_packages"
@@ -93,7 +92,8 @@ func (s *Stream) Print() string {
 }
 
 func printRequest(payload []byte) string {
-	buf := bufio.NewReader(bytes.NewReader(payload))
+	headerData := bytes.Split(payload, []byte("\n\n"))[0]
+	buf := bufio.NewReader(bytes.NewReader(headerData))
 
 	res, err := http.ReadRequest(buf)
 	if err != nil {
@@ -120,19 +120,11 @@ func printRequest(payload []byte) string {
 		header = fmt.Sprintf("%s%s=%s\n", header, k, strings.Join(v, `,`))
 	}
 
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		log.Println("could not read body: ", err)
-		return ""
-	}
-	if len(body) > 0 {
-		return fmt.Sprintf("%s %s (%s)\n%s\n%s\n", res.Method, res.URL.Path, res.Proto, header, string(body))
-	}
-
 	return fmt.Sprintf("%s %s (%s)\n%s\n", res.Method, res.URL.Path, res.Proto, header)
 }
 func printResponse(payload []byte) string {
-	buf := bufio.NewReader(bytes.NewReader(payload))
+	headerData := bytes.Split(payload, []byte("\n\n"))[0]
+	buf := bufio.NewReader(bytes.NewReader(headerData))
 
 	res, err := http.ReadResponse(buf, nil)
 	if err != nil {
@@ -145,15 +137,6 @@ func printResponse(payload []byte) string {
 		header = fmt.Sprintf("%s%s=%s\n", header, k, strings.Join(v, `,`))
 	}
 
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		log.Println("could not read body: ", err)
-		return ""
-	}
-	if len(body) > 0 {
-		return fmt.Sprintf("%d (%s)\n%s\n%s\n", res.StatusCode, res.Proto, header, string(body))
-
-	}
 	return fmt.Sprintf("%d (%s)\n%s\n", res.StatusCode, res.Proto, header)
 
 }
