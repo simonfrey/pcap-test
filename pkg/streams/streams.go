@@ -117,11 +117,23 @@ func printResponse(payload []byte) string {
 	//status := mainInfo[2]
 
 	headers := make([]string, 0)
-	for _, line := range lines[1:] {
+	chunked := false
+	lastHeaderIndex := 0
+	for k, line := range lines[1:] {
 		if strings.TrimSpace(line) == "" {
+			lastHeaderIndex = k
 			break
 		}
+		if strings.Contains(line, "chunked") {
+			chunked = true
+		}
 		headers = append(headers, line)
+	}
+	if chunked {
+		// We have a chunked response. Load data
+		for _, chunkLine := range lines[lastHeaderIndex:] {
+			fmt.Println("CHUNK DATA:", chunkLine)
+		}
 	}
 
 	return fmt.Sprintf("%s %s\n%s", statusCode, httpVersion, strings.Join(headers, "\n"))
