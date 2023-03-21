@@ -35,13 +35,13 @@ func (f *Flows) GetFlow(src, dst string) *Flow {
 	return f.flows[fmt.Sprintf("%s%s", src, dst)]
 }
 
-func (f *Flows) PrintFlow(src, dst string) {
+func (f *Flows) PrintFlow(src, dst string) string {
 	flow := f.GetFlow(src, dst)
 	if flow == nil {
 		// Did not get any flow
-		return
+		return ""
 	}
-	flow.Print()
+	return flow.Print()
 }
 
 func (f *Flows) AddPackage(src, dst string, p *tcp_packages.Pack) {
@@ -70,9 +70,11 @@ type Flow struct {
 	Streams streams.Streams
 }
 
-func (f *Flow) Print() {
-	fmt.Println("---------------")
-	fmt.Printf("%s=>%s\n", f.Initiator, f.Target)
-	f.Streams.Print()
-	fmt.Println("---------------")
+func (f *Flow) Print() string {
+	streamsPrint := f.Streams.Print()
+	if streamsPrint == "" {
+		return ""
+	}
+	return fmt.Sprintf("---------------\n%s=>%s\n%s\n---------------",
+		f.Initiator, f.Target, streamsPrint)
 }

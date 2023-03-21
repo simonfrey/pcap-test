@@ -62,7 +62,6 @@ func main() {
 				tcpLayer := packet.Layer(layers.LayerTypeTCP)
 				if tcpLayer == nil {
 					// No TCP packet
-					fmt.Println("no tcp")
 					continue
 				}
 
@@ -97,7 +96,8 @@ func main() {
 					})
 				}
 				if tcp.FIN {
-					fs.PrintFlow(src, dst)
+					flow := fs.PrintFlow(src, dst)
+					fmt.Println(flow)
 					continue
 				}
 

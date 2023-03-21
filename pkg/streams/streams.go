@@ -25,13 +25,20 @@ func NewStreams() Streams {
 	}
 }
 
-func (s *Streams) Print() {
+func (s *Streams) Print() string {
 	s.streamsMux.RLock()
 	defer s.streamsMux.RUnlock()
 
+	rs := ""
 	for _, v := range s.streams {
-		v.Print()
+		vs := v.Print()
+		if vs == "" {
+			return ""
+		}
+		rs = fmt.Sprintf("%s%s", rs, vs)
 	}
+
+	return rs
 }
 
 func (s *Streams) AddPackage(src, dst string, pack *tcp_packages.Pack) {
@@ -67,32 +74,41 @@ func (s *Stream) AddPackage(pack *tcp_packages.Pack) {
 	s.Packages.AddPackage(pack)
 }
 
-func (s *Stream) Print() {
+func (s *Stream) Print() string {
 	payload := s.Packages.Bytes()
 	if !bytes.Contains(payload, []byte("HTTP")) {
 		fmt.Println("payload does not contian 'HTTP'", string(payload))
-		return
+		return ""
 	}
 
 	fmt.Printf("%s => %s\n", s.Source, s.Destination)
 
 	if isRequest(string(payload[:20])) {
 		// We have a request
-		printRequest(payload)
-		return
+		return printRequest(payload)
 	}
 
 	// We have a response
-	printResponse(payload)
+	return printResponse(payload)
 }
 
-func printRequest(payload []byte) {
+func printRequest(payload []byte) string {
 	buf := bufio.NewReader(bytes.NewReader(payload))
 
 	res, err := http.ReadRequest(buf)
 	if err != nil {
 		log.Println("could not parse request: ", err, string(payload))
-		return
+		return ""
+	}
+
+	// Filter out healthz requests
+	if strings.Contains(res.URL.Path, "/healthz") {
+		return ""
+	}
+	// Filter out requests from kubeproxy and google health check
+	if userAgent := res.Header.Get("User-Agent"); strings.Contains(userAgent, "GoogleHC") ||
+		strings.Contains(userAgent, "kube-probe") {
+		return ""
 	}
 
 	header := ""
@@ -103,21 +119,21 @@ func printRequest(payload []byte) {
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		log.Println("could not read body: ", err)
-		return
+		return ""
 	}
 	if len(body) > 0 {
-		fmt.Printf("%s %s (%s)\n%s\n%s\n", res.Method, res.URL.Path, res.Proto, header, string(body))
-		return
+		return fmt.Sprintf("%s %s (%s)\n%s\n%s\n", res.Method, res.URL.Path, res.Proto, header, string(body))
 	}
-	fmt.Printf("%s %s (%s)\n%s\n", res.Method, res.URL.Path, res.Proto, header)
+
+	return fmt.Sprintf("%s %s (%s)\n%s\n", res.Method, res.URL.Path, res.Proto, header)
 }
-func printResponse(payload []byte) {
+func printResponse(payload []byte) string {
 	buf := bufio.NewReader(bytes.NewReader(payload))
 
 	res, err := http.ReadResponse(buf, nil)
 	if err != nil {
 		log.Println("could not parse response: ", err, string(payload))
-		return
+		return ""
 	}
 
 	header := ""
@@ -128,13 +144,13 @@ func printResponse(payload []byte) {
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		log.Println("could not read body: ", err)
-		return
+		return ""
 	}
 	if len(body) > 0 {
-		fmt.Printf("%d (%s)\n%s\n%s\n", res.StatusCode, res.Proto, header, string(body))
-		return
+		return fmt.Sprintf("%d (%s)\n%s\n%s\n", res.StatusCode, res.Proto, header, string(body))
+
 	}
-	fmt.Printf("%d (%s)\n%s\n", res.StatusCode, res.Proto, header)
+	return fmt.Sprintf("%d (%s)\n%s\n", res.StatusCode, res.Proto, header)
 
 }
 
