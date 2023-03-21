@@ -1,11 +1,8 @@
 package streams
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
-	"log"
-	"net/http"
 	"pcaptest/pkg/tcp_packages"
 	"strings"
 	"sync"
@@ -34,7 +31,7 @@ func (s *Streams) Print() string {
 		if vs == "" {
 			return ""
 		}
-		rs = fmt.Sprintf("%s%s", rs, vs)
+		rs = fmt.Sprintf("%s%s\n", rs, vs)
 	}
 
 	return rs
@@ -84,60 +81,50 @@ func (s *Stream) Print() string {
 
 	if isRequest(string(payload[:20])) {
 		// We have a request
-		return fmt.Sprintf("%s%s", p, printRequest(payload))
+		return fmt.Sprintf("%s%s\n", p, printRequest(payload))
 	}
 
 	// We have a response
-	return fmt.Sprintf("%s%s", p, printResponse(payload))
+	return fmt.Sprintf("%s%s\n", p, printResponse(payload))
 }
 
 func printRequest(payload []byte) string {
-	headerData := bytes.Split(payload, []byte("\n\n"))[0]
-	buf := bufio.NewReader(bytes.NewReader(headerData))
+	lines := strings.Split(string(payload), "\n")
 
-	res, err := http.ReadRequest(buf)
-	if err != nil {
-		log.Println("could not parse request: ", err, string(payload))
-		return ""
-	}
+	//First Line contains path and request
+	mainInfo := strings.Split(lines[0], " ")
+	method := mainInfo[0]
+	path := mainInfo[1]
+	httpVersion := mainInfo[2]
 
-	// Filter out healthz requests
-	if strings.Contains(res.URL.Path, "/healthz") {
-		return ""
-	}
-	// Filter out metrics requests
-	if strings.Contains(res.URL.Path, "/metrics") {
-		return ""
-	}
-	// Filter out requests from kubeproxy and google health check
-	if userAgent := res.Header.Get("User-Agent"); strings.Contains(userAgent, "GoogleHC") ||
-		strings.Contains(userAgent, "kube-probe") {
-		return ""
+	headers := make([]string, 0)
+	for _, line := range lines[1:] {
+		if strings.TrimSpace(line) == "" {
+			break
+		}
+		headers = append(headers, line)
 	}
 
-	header := ""
-	for k, v := range res.Header {
-		header = fmt.Sprintf("%s%s=%s\n", header, k, strings.Join(v, `,`))
-	}
-
-	return fmt.Sprintf("%s %s (%s)\n%s\n", res.Method, res.URL.Path, res.Proto, header)
+	return fmt.Sprintf("%s %s %s\n%s", method, path, httpVersion, strings.Join(headers, "\n"))
 }
 func printResponse(payload []byte) string {
-	headerData := bytes.Split(payload, []byte("\n\n"))[0]
-	buf := bufio.NewReader(bytes.NewReader(headerData))
+	lines := strings.Split(string(payload), "\n")
 
-	res, err := http.ReadResponse(buf, nil)
-	if err != nil {
-		log.Println("could not parse response: ", err, string(payload))
-		return ""
+	//First Line contains path and request
+	mainInfo := strings.Split(lines[0], " ")
+	httpVersion := mainInfo[0]
+	statusCode := mainInfo[1]
+	//status := mainInfo[2]
+
+	headers := make([]string, 0)
+	for _, line := range lines[1:] {
+		if strings.TrimSpace(line) == "" {
+			break
+		}
+		headers = append(headers, line)
 	}
 
-	header := ""
-	for k, v := range res.Header {
-		header = fmt.Sprintf("%s%s=%s\n", header, k, strings.Join(v, `,`))
-	}
-
-	return fmt.Sprintf("%d (%s)\n%s\n", res.StatusCode, res.Proto, header)
+	return fmt.Sprintf("%s %s\n%s", statusCode, httpVersion, strings.Join(headers, "\n"))
 
 }
 
