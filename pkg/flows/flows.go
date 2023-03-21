@@ -71,6 +71,8 @@ type Flow struct {
 }
 
 func (f *Flow) Print() {
-	fmt.Printf("\n\n%s=>%s\n", f.Initiator, f.Target)
+	fmt.Println("---------------")
+	fmt.Printf("%s=>%s\n", f.Initiator, f.Target)
 	f.Streams.Print()
+	fmt.Println("---------------")
 }

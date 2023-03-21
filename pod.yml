@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pcap-test
+  namespace: stage
+spec:
+  hostNetwork: true
+  containers:
+    - name: pcap
+      image: ghcr.io/simonfrey/pcap-test:1ff491d54021eedd0e2e9d36164cbfab672549ea
