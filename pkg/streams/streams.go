@@ -74,7 +74,7 @@ func (s *Stream) Print() {
 		return
 	}
 
-	fmt.Printf("\n%s => %s\n", s.Source, s.Destination)
+	fmt.Printf("%s => %s\n", s.Source, s.Destination)
 
 	if isRequest(string(payload[:20])) {
 		// We have a request
@@ -105,7 +105,11 @@ func printRequest(payload []byte) {
 		log.Println("could not read body: ", err)
 		return
 	}
-	fmt.Printf("%s %s (%s)\n%s\n%s", res.Method, res.URL.Path, res.Proto, header, string(body))
+	if len(body) > 0 {
+		fmt.Printf("%s %s (%s)\n%s\n%s\n", res.Method, res.URL.Path, res.Proto, header, string(body))
+		return
+	}
+	fmt.Printf("%s %s (%s)\n%s\n", res.Method, res.URL.Path, res.Proto, header)
 }
 func printResponse(payload []byte) {
 	buf := bufio.NewReader(bytes.NewReader(payload))
@@ -126,7 +130,11 @@ func printResponse(payload []byte) {
 		log.Println("could not read body: ", err)
 		return
 	}
-	fmt.Printf("%d (%s)\n%s\n%s", res.StatusCode, res.Proto, header, string(body))
+	if len(body) > 0 {
+		fmt.Printf("%d (%s)\n%s\n%s\n", res.StatusCode, res.Proto, header, string(body))
+		return
+	}
+	fmt.Printf("%d (%s)\n%s\n", res.StatusCode, res.Proto, header)
 
 }
 
