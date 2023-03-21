@@ -99,10 +99,19 @@ func printRequest(payload []byte) string {
 	path := mainInfo[1]
 	httpVersion := mainInfo[2]
 
+	if strings.Contains(path, "/healthz") ||
+		strings.Contains(path, "/metrics") {
+		return ""
+	}
+
 	headers := make([]string, 0)
 	for _, line := range lines[1:] {
 		if strings.TrimSpace(line) == "" {
 			break
+		}
+		if strings.Contains(line, "Prometheus") ||
+			strings.Contains(line, "GoogleHC") {
+			return ""
 		}
 		headers = append(headers, line)
 	}
