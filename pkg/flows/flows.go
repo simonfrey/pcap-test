@@ -5,7 +5,6 @@ import (
 	"pcaptest/pkg/kube"
 	"pcaptest/pkg/streams"
 	"pcaptest/pkg/tcp_packages"
-	"strings"
 	"sync"
 	"time"
 )
@@ -62,9 +61,9 @@ func (f *Flows) AddPackage(src, dst string, p *tcp_packages.Pack) {
 		flow = &Flow{
 			Initiator: src,
 			// TODO: get app name
-			InitiatorApp: f.ipMapper.Get(strings.Split(src, ":")[0]),
+			InitiatorApp: f.ipMapper.Get(src),
 			Target:       dst,
-			TargetApp:    f.ipMapper.Get(strings.Split(dst, ":")[0]),
+			TargetApp:    f.ipMapper.Get(dst),
 			FirstPackage: time.Now(),
 			LastPackage:  time.Now(),
 			Streams:      streams.NewStreams(),
