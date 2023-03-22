@@ -55,24 +55,24 @@ func main() {
 	namespaceList, _ := kubeClient.CoreV1().Namespaces().List(ctx, options)
 	for _, namespace := range (*namespaceList).Items {
 		podList, _ := kubeClient.CoreV1().Pods(namespace.Name).List(ctx, options)
-		for _, service := range (*podList).Items {
-			name := fmt.Sprintf("%s(%s)", service.Name, service.Namespace)
+		for _, pod := range (*podList).Items {
+			name := fmt.Sprintf("%s(%s)", pod.Name, pod.Namespace)
 
-			for _, ip := range service.Status.PodIPs {
+			for _, ip := range pod.Status.PodIPs {
 				if ip.String() == "None" {
 					continue
 				}
-				for _, containers := range service.Spec.Containers {
+				for _, containers := range pod.Spec.Containers {
 					for _, port := range containers.Ports {
 						if port.ContainerPort != 0 {
 							containerPort := fmt.Sprintf("%s:%d", ip, port.ContainerPort)
 							fmt.Println("containerPort", containerPort)
-							ipMap[containerPort] = name
+							ipMap[ip.String()] = name
 						}
 						if port.HostPort != 0 {
-							hostPort := fmt.Sprintf("%s:%d", ip, port.HostPort)
+							hostPort := fmt.Sprintf("%s:%d", pod.Status.HostIP, port.HostPort)
 							fmt.Println("hostPort", hostPort)
-							ipMap[hostPort] = name
+							ipMap[pod.Status.HostIP] = name
 						}
 					}
 				}
@@ -91,11 +91,11 @@ func main() {
 					if port.Port != 0 {
 						ipPort := fmt.Sprintf("%s:%d", ip, port.Port)
 						fmt.Println("ipPort", ipPort)
-						ipMap[ipPort] = name
+						ipMap[ip] = name
 					}
 					if port.NodePort != 0 {
 						ipNodePort := fmt.Sprintf("%s:%d", ip, port.NodePort)
-						ipMap[ipNodePort] = name
+						ipMap[ip] = name
 						fmt.Println("ipNodePort", ipNodePort)
 					}
 				}

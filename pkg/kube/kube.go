@@ -69,22 +69,24 @@ func (s ServiceIPLoader) LoadServiceIPsIntoMapper() error {
 		if err != nil {
 			return fmt.Errorf("could not list pods: %w", err)
 		}
-		for _, service := range (*podList).Items {
-			name := fmt.Sprintf("%s(%s)", service.Name, service.Namespace)
+		for _, pod := range (*podList).Items {
+			name := fmt.Sprintf("%s(%s)", pod.Name, pod.Namespace)
 
-			for _, ip := range service.Status.PodIPs {
+			for _, ip := range pod.Status.PodIPs {
 				if ip.String() == "None" {
 					continue
 				}
-				for _, containers := range service.Spec.Containers {
+				for _, containers := range pod.Spec.Containers {
 					for _, port := range containers.Ports {
 						if port.ContainerPort != 0 {
-							//containerPort := fmt.Sprintf("%s:%d", ip, port.ContainerPort)
+							containerPort := fmt.Sprintf("%s:%d", ip, port.ContainerPort)
+							fmt.Println("containerPort", containerPort)
 							s.mapper.Set(ip.String(), name)
 						}
 						if port.HostPort != 0 {
-							//hostPort := fmt.Sprintf("%s:%d", ip, port.HostPort)
-							s.mapper.Set(ip.String(), name)
+							hostPort := fmt.Sprintf("%s:%d", pod.Status.HostIP, port.HostPort)
+							fmt.Println("hostPort", hostPort)
+							s.mapper.Set(pod.Status.HostIP, name)
 						}
 					}
 				}
