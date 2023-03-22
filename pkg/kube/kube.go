@@ -65,6 +65,32 @@ func (s ServiceIPLoader) LoadServiceIPsIntoMapper() error {
 		return fmt.Errorf("could not get namespaces: %w", err)
 	}
 	for _, namespace := range (*namespaceList).Items {
+		podList, err := s.kubeClient.CoreV1().Pods(namespace.Name).List(ctx, options)
+		if err != nil {
+			return fmt.Errorf("could not list pods: %w", err)
+		}
+		for _, service := range (*podList).Items {
+			name := fmt.Sprintf("%s(%s)", service.Name, service.Namespace)
+
+			for _, ip := range service.Status.PodIPs {
+				if ip.String() == "None" {
+					continue
+				}
+				for _, containers := range service.Spec.Containers {
+					for _, port := range containers.Ports {
+						if port.ContainerPort != 0 {
+							containerPort := fmt.Sprintf("%s:%d", ip, port.ContainerPort)
+							s.mapper.Set(containerPort, name)
+						}
+						if port.HostPort != 0 {
+							hostPort := fmt.Sprintf("%s:%d", ip, port.HostPort)
+							s.mapper.Set(hostPort, name)
+						}
+					}
+				}
+			}
+		}
+
 		servicesList, err := s.kubeClient.CoreV1().Services(namespace.Name).List(ctx, options)
 		if err != nil {
 			return fmt.Errorf("could not get services: %w", err)
