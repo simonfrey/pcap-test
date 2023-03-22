@@ -67,6 +67,12 @@ func main() {
 	ipMapper := kube.NewIPMapper()
 	fs := flows.NewFlows(ipMapper)
 
+	serviceLoader := kube.NewServiceIPLoader(ipMapper)
+	err = serviceLoader.LoadServiceIPsIntoMapper()
+	if err != nil {
+		log.Fatal("could not load service ips", err)
+	}
+
 	packChan := make(chan gopacket.Packet)
 	for _, d := range devices {
 		go func(device pcap.Interface) {
