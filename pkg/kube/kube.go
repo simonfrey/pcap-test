@@ -79,12 +79,12 @@ func (s ServiceIPLoader) LoadServiceIPsIntoMapper() error {
 				for _, containers := range service.Spec.Containers {
 					for _, port := range containers.Ports {
 						if port.ContainerPort != 0 {
-							containerPort := fmt.Sprintf("%s:%d", ip, port.ContainerPort)
-							s.mapper.Set(containerPort, name)
+							//containerPort := fmt.Sprintf("%s:%d", ip, port.ContainerPort)
+							s.mapper.Set(ip.String(), name)
 						}
 						if port.HostPort != 0 {
-							hostPort := fmt.Sprintf("%s:%d", ip, port.HostPort)
-							s.mapper.Set(hostPort, name)
+							//hostPort := fmt.Sprintf("%s:%d", ip, port.HostPort)
+							s.mapper.Set(ip.String(), name)
 						}
 					}
 				}
@@ -104,12 +104,12 @@ func (s ServiceIPLoader) LoadServiceIPsIntoMapper() error {
 				}
 				for _, port := range service.Spec.Ports {
 					if port.Port != 0 {
-						ipPort := fmt.Sprintf("%s:%d", ip, port.Port)
-						s.mapper.Set(ipPort, name)
+						//ipPort := fmt.Sprintf("%s:%d", ip, port.Port)
+						s.mapper.Set(ip, name)
 					}
 					if port.NodePort != 0 {
-						ipNodePort := fmt.Sprintf("%s:%d", ip, port.NodePort)
-						s.mapper.Set(ipNodePort, name)
+						//ipNodePort := fmt.Sprintf("%s:%d", ip, port.NodePort)
+						s.mapper.Set(ip, name)
 					}
 				}
 			}

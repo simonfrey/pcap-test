@@ -130,12 +130,12 @@ func main() {
 			// Ignore everything that is not pod network
 			continue
 		}*/
+		/*
+			transportFlow := packet.TransportLayer().TransportFlow()
+			transportSRC, transportDST := transportFlow.Endpoints()*/
 
-		transportFlow := packet.TransportLayer().TransportFlow()
-		transportSRC, transportDST := transportFlow.Endpoints()
-
-		src := fmt.Sprintf("%s:%s", networkSRC, transportSRC)
-		dst := fmt.Sprintf("%s:%s", networkDST, transportDST)
+		src := networkSRC.String()
+		dst := networkDST.String()
 
 		// Add package to flow (auto generates new flow if non exists)
 		fs.AddPackage(src, dst, &tcp_packages.Pack{
