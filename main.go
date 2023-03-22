@@ -147,6 +147,7 @@ func main() {
 		flow := fs.GetFlow(src, dst)
 
 		if flow == nil || flow.TargetApp == "" {
+			fmt.Println("NO service matched for", flow.Target)
 			continue
 		}
 
