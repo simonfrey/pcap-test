@@ -154,29 +154,31 @@ func main() {
 
 		if tcp.FIN {
 			// End of connection. Get further metrics
+			func() {
+				defer fs.DeleteFlow(src, dst)
 
-			httpStreams := flow.Streams.HttpStreams()
-			statusCode := "-1"
-			for _, v := range httpStreams {
-				if v.Type == streams.RESPONSE {
-					statusCode = v.StatusCode
-					break
-				}
-			}
-
-			if statusCode != "-1" {
-				if len(httpStreams) == 2 {
-					// Got exactly two start times as we expect it
-					ttfb.WithLabelValues(flow.TargetApp, statusCode).
-						Observe(float64(httpStreams[1].FirstPackage.Sub(httpStreams[0].FirstPackage).Milliseconds()))
+				httpStreams := flow.Streams.HttpStreams()
+				statusCode := "-1"
+				for _, v := range httpStreams {
+					if v.Type == streams.RESPONSE {
+						statusCode = v.StatusCode
+						break
+					}
 				}
 
-				responseCodes.WithLabelValues(flow.TargetApp, statusCode).Inc()
-				e2eTime.WithLabelValues(flow.TargetApp, statusCode).
-					Observe(float64(flow.LastPackage.Sub(flow.FirstPackage).Milliseconds()))
+				if statusCode != "-1" {
+					if len(httpStreams) == 2 {
+						// Got exactly two start times as we expect it
+						ttfb.WithLabelValues(flow.TargetApp, statusCode).
+							Observe(float64(httpStreams[1].FirstPackage.Sub(httpStreams[0].FirstPackage).Milliseconds()))
+					}
 
-			}
-			fs.DeleteFlow(src, dst)
+					responseCodes.WithLabelValues(flow.TargetApp, statusCode).Inc()
+					e2eTime.WithLabelValues(flow.TargetApp, statusCode).
+						Observe(float64(flow.LastPackage.Sub(flow.FirstPackage).Milliseconds()))
+
+				}
+			}()
 		}
 	}
 }
