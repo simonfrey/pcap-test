@@ -77,7 +77,9 @@ func (s *Streams) HttpStreams() []*HttpStream {
 			Destination:  stream.Destination,
 		}
 		data := stream.Packages.Bytes()
-		if isRequest(string(data[:20])) {
+		isRequestData := string(data[:20])
+		fmt.Println("isRequestData", isRequestData)
+		if isRequest(isRequestData) {
 			// We have a request
 			method, path, _, headers := parseRequest(data)
 			httpStream.Type = REQUEST
@@ -128,11 +130,15 @@ type Stream struct {
 }
 
 func (s *Stream) IsHTTP() bool {
-	if s.Packages.Len() == 0 {
+	payload := s.Packages.Bytes()
+	if len(payload) < 20 {
 		return false
 	}
-	payload := s.Packages.Bytes()
-	return bytes.Contains(payload, []byte("HTTP"))
+	lines := strings.Split(string(payload), "\n")
+	if len(lines) == 0 {
+		return false
+	}
+	return strings.Contains(lines[0], "HTTP/")
 }
 
 func (s *Stream) AddPackage(pack *tcp_packages.Pack) {
@@ -196,23 +202,39 @@ func parseRequest(payload []byte) (method, path, httpVersion string, headers htt
 	lines := strings.Split(string(payload), "\n")
 
 	//First Line contains path and request
-	mainInfo := strings.Split(lines[0], " ")
-	method = mainInfo[0]
-	path = mainInfo[1]
-	httpVersion = mainInfo[2]
-	headers = parseHeaders(lines[1:])
+	baseLineIndex := 0
+	for k, line := range lines {
+		mainInfo := strings.Split(line, " ")
+		if len(mainInfo) < 3 {
+			continue
+		}
+		method = mainInfo[0]
+		path = mainInfo[1]
+		httpVersion = mainInfo[2]
+		baseLineIndex = k
+		break
+	}
+	headers = parseHeaders(lines[baseLineIndex:])
 	return method, path, httpVersion, headers
 }
 
 func parseResponse(payload []byte) (statusCode, httpVersion string, headers http.Header) {
 	lines := strings.Split(string(payload), "\n")
 
-	//First Line contains path and request
-	mainInfo := strings.Split(lines[0], " ")
-	httpVersion = mainInfo[0]
-	statusCode = mainInfo[1]
+	// First Line contains path and request
+	baseLineIndex := 0
+	for k, line := range lines {
+		mainInfo := strings.Split(line, " ")
+		if len(mainInfo) < 2 {
+			continue
+		}
+		httpVersion = mainInfo[0]
+		statusCode = mainInfo[1]
+		baseLineIndex = k
+		break
+	}
 
-	headers = parseHeaders(lines[1:])
+	headers = parseHeaders(lines[baseLineIndex:])
 	return statusCode, httpVersion, headers
 }
 

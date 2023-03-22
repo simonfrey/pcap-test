@@ -6,7 +6,6 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"log"
 	"net/http"
@@ -23,25 +22,32 @@ import (
 // https://blog.apnic.net/2021/05/12/programmatically-analyse-packet-captures-with-gopacket/
 
 var (
-	tcpPackagesReceived = promauto.NewCounterVec(prometheus.CounterOpts{
+	tcpPackagesReceived = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "tcp_packages_received",
 		Help: "The total number of tcp packages received",
 	}, []string{"app"})
-	e2eTime = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	e2eTime = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "e2e_time",
 		Help:    "Time for a tcp connection between initial SYN until FIN package",
 		Buckets: prometheus.ExponentialBucketsRange(1, 30000, 15),
 	}, []string{"app", "status_code"})
-	ttfb = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	ttfb = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "ttfb",
 		Help:    "Time for a http connection until first response package is send back",
 		Buckets: prometheus.ExponentialBucketsRange(1, 30000, 15),
 	}, []string{"app", "status_code"})
-	responseCodes = promauto.NewCounterVec(prometheus.CounterOpts{
+	responseCodes = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "response_codes",
 		Help: "Count the response codes from the anwers",
 	}, []string{"app", "status_code"})
 )
+
+func init() {
+	prometheus.MustRegister(tcpPackagesReceived)
+	prometheus.MustRegister(e2eTime)
+	prometheus.MustRegister(ttfb)
+	prometheus.MustRegister(responseCodes)
+}
 
 func main() {
 	go func() {
@@ -77,7 +83,7 @@ func main() {
 				fmt.Println("- IP address: ", address.IP)
 			}
 
-			handle, err := pcap.OpenLive(device.Name, pcap.MaxBpfInstructions, false, 30*time.Second)
+			handle, err := pcap.OpenLive(device.Name, pcap.MaxBpfInstructions, false, 1*time.Second)
 			if err != nil {
 				panic(err)
 			}
@@ -133,9 +139,13 @@ func main() {
 		})
 
 		flow := fs.GetFlow(src, dst)
+		fmt.Println("TARGET", flow.Target)
+
 		if flow == nil || flow.TargetApp == "" {
+			fmt.Println("SKIP flow as now target package")
 			continue
 		}
+
 		tcpPackagesReceived.WithLabelValues(flow.TargetApp).Inc()
 
 		if tcp.FIN {
@@ -150,17 +160,18 @@ func main() {
 				}
 			}
 
-			if len(httpStreams) == 2 {
-				// Got exactly two start times as we expect it
-				ttfb.WithLabelValues(flow.TargetApp, statusCode).
-					Observe(float64(httpStreams[1].FirstPackage.Sub(httpStreams[0].FirstPackage).Milliseconds()))
+			if statusCode != "-1" {
+				if len(httpStreams) == 2 {
+					// Got exactly two start times as we expect it
+					ttfb.WithLabelValues(flow.TargetApp, statusCode).
+						Observe(float64(httpStreams[1].FirstPackage.Sub(httpStreams[0].FirstPackage).Milliseconds()))
+				}
+
+				responseCodes.WithLabelValues(flow.TargetApp, statusCode).Inc()
+				e2eTime.WithLabelValues(flow.TargetApp, statusCode).
+					Observe(float64(flow.LastPackage.Sub(flow.FirstPackage).Milliseconds()))
 
 			}
-
-			responseCodes.WithLabelValues(flow.TargetApp, statusCode).Inc()
-			e2eTime.WithLabelValues(flow.TargetApp, statusCode).
-				Observe(float64(flow.LastPackage.Sub(flow.FirstPackage).Milliseconds()))
-
 			fs.DeleteFlow(src, dst)
 		}
 	}
