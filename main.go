@@ -145,10 +145,8 @@ func main() {
 		})
 
 		flow := fs.GetFlow(src, dst)
-		fmt.Println("TARGET", flow.Target)
 
 		if flow == nil || flow.TargetApp == "" {
-			fmt.Println("SKIP flow as now target package")
 			continue
 		}
 
