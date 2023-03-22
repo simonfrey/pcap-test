@@ -9,30 +9,23 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"log"
 	"net/http"
-	"pcaptest/pkg/flows"
 	"pcaptest/pkg/kube"
-	"pcaptest/pkg/streams"
-	"pcaptest/pkg/tcp_packages"
+	"strings"
 	"time"
 )
 
-// https://www.devdungeon.com/content/packet-capture-injection-and-analysis-gopacket
-// https://pkg.go.dev/github.com/google/gopacket?utm_source=godoc
-// https://learnk8s.io/kubernetes-network-packets
-// https://blog.apnic.net/2021/05/12/programmatically-analyse-packet-captures-with-gopacket/
-
 var (
-	tcpPackagesReceived = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "tcp_packages_received",
-		Help: "The total number of tcp packages received",
+	httpRequests = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "httpRequests",
+		Help: "The total number of http request received",
 	}, []string{"app"})
 	e2eTime = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "e2e_time",
 		Help:    "Time for a tcp connection between initial SYN until FIN package",
 		Buckets: prometheus.ExponentialBucketsRange(1, 30000, 15),
 	}, []string{"app", "status_code"})
-	ttfb = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "ttfb",
+	httpTime = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "http_time",
 		Help:    "Time for a http connection until first response package is send back",
 		Buckets: prometheus.ExponentialBucketsRange(1, 30000, 15),
 	}, []string{"app", "status_code"})
@@ -43,9 +36,9 @@ var (
 )
 
 func init() {
-	prometheus.MustRegister(tcpPackagesReceived)
+	prometheus.MustRegister(httpRequests)
 	prometheus.MustRegister(e2eTime)
-	prometheus.MustRegister(ttfb)
+	prometheus.MustRegister(httpTime)
 	prometheus.MustRegister(responseCodes)
 }
 
@@ -58,128 +51,161 @@ func main() {
 		}
 	}()
 
-	devices, err := pcap.FindAllDevs()
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("Devices found:")
-
 	ipMapper := kube.NewIPMapper()
-	fs := flows.NewFlows(ipMapper)
-
 	serviceLoader := kube.NewServiceIPLoader(ipMapper)
-	err = serviceLoader.LoadServiceIPsIntoMapper()
+	err := serviceLoader.LoadServiceIPsIntoMapper()
 	if err != nil {
 		log.Fatal("could not load service ips", err)
 	}
 
-	packChan := make(chan gopacket.Packet)
-	for _, d := range devices {
-		go func(device pcap.Interface) {
-			if len(device.Addresses) == 0 {
-				// We don't want devices without addresses
-				return
-			}
-			fmt.Println("\nName: ", device.Name)
-			for _, address := range device.Addresses {
-				if address.IP.IsLoopback() {
-					// We don't want the loopback device
-					return
-				}
-				fmt.Println("- IP address: ", address.IP)
-			}
-
-			handle, err := pcap.OpenLive(device.Name, pcap.MaxBpfInstructions, false, 1*time.Second)
-			if err != nil {
-				panic(err)
-			}
-			// Set filter
-			//			var filter string = "tcp and port 80"
-			var filter string = "tcp"
-			err = handle.SetBPFFilter(filter)
-			if err != nil {
-				log.Fatal(err)
-			}
-			fmt.Println("Only capturing TCP packets.")
-
-			packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
-			for packet := range packetSource.Packets() {
-				packChan <- packet
-			}
-		}(d)
+	devices, err := pcap.FindAllDevs()
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	for packet := range packChan {
-		// We are only interested in TCP packets
-		tcpLayer := packet.Layer(layers.LayerTypeTCP)
-		if tcpLayer == nil {
-			// No TCP packet
+	packageChan := make(chan gopacket.Packet)
+	for _, device := range devices {
+		if len(device.Addresses) == 0 {
+			// We don't want devices without addresses
+			continue
+		}
+		fmt.Println("\nName: ", device.Name)
+		var isLo bool
+		for _, address := range device.Addresses {
+			if address.IP.IsLoopback() {
+				// We don't want the loopback device
+				fmt.Println("SKIP this device as it is LO")
+				isLo = true
+				break
+			}
+			fmt.Println("- IP address: ", address.IP)
+		}
+		if isLo {
 			continue
 		}
 
-		tcp, ok := tcpLayer.(*layers.TCP)
+		handle, err := pcap.OpenLive(device.Name, pcap.MaxBpfInstructions, false, 1*time.Second)
+		if err != nil {
+			fmt.Println("could not open device:", err)
+			return
+		}
+
+		go func() {
+			packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+			for packet := range packetSource.Packets() {
+				packageChan <- packet
+			}
+
+		}()
+	}
+
+	type Flow struct {
+		SourceIP   string
+		TargetIP   string
+		StatusCode string
+
+		TCPStart time.Time
+		TCPEnd   time.Time
+
+		HTTPRequest  time.Time
+		HTTPResponse time.Time
+	}
+	requestFlows := map[string]*Flow{}
+
+	for packet := range packageChan {
+		networkLayer := packet.NetworkLayer()
+		if networkLayer == nil {
+			continue
+		}
+
+		transportLayer := packet.TransportLayer()
+		if transportLayer == nil {
+			continue
+		}
+
+		tcpPacket, ok := transportLayer.(*layers.TCP)
 		if !ok {
-			fmt.Println("could not cast to tcp layer")
 			continue
 		}
+		srcIP, dstIP := networkLayer.NetworkFlow().Endpoints()
+		cacheKey1 := fmt.Sprintf("%s%s", srcIP, dstIP)
+		cacheKey2 := fmt.Sprintf("%s%s", dstIP, srcIP)
 
-		netFlow := packet.NetworkLayer().NetworkFlow()
-		networkSRC, networkDST := netFlow.Endpoints()
-
-		/*	if false && !strings.Contains(networkSRC.String(), "10.4.") && !strings.Contains(networkDST.String(), "10.4.") {
-			// Ignore everything that is not pod network
-			continue
-		}*/
-		/*
-			transportFlow := packet.TransportLayer().TransportFlow()
-			transportSRC, transportDST := transportFlow.Endpoints()*/
-
-		src := networkSRC.String()
-		dst := networkDST.String()
-
-		// Add package to flow (auto generates new flow if non exists)
-		fs.AddPackage(src, dst, &tcp_packages.Pack{
-			Payload:  tcp.Payload,
-			Seq:      tcp.Seq,
-			Received: time.Now(),
-		})
-
-		flow := fs.GetFlow(src, dst)
-
-		if flow == nil || flow.TargetApp == "" {
-			fmt.Println("NO service matched for", flow.Target)
-			continue
-		}
-
-		tcpPackagesReceived.WithLabelValues(flow.TargetApp).Inc()
-
-		if tcp.FIN {
-			// End of connection. Get further metrics
-			func() {
-				defer fs.DeleteFlow(src, dst)
-
-				httpStreams := flow.Streams.HttpStreams()
-				statusCode := "-1"
-				for _, v := range httpStreams {
-					if v.Type == streams.RESPONSE {
-						statusCode = v.StatusCode
-						break
+		if tcpPacket.SYN {
+			// This is the start of a connection (quite likely)
+			_, exists := requestFlows[cacheKey1]
+			if !exists {
+				_, exists = requestFlows[cacheKey2]
+				if !exists {
+					// Create a new flow
+					newFlow := &Flow{
+						SourceIP: srcIP.String(),
+						TargetIP: dstIP.String(),
+						TCPStart: time.Now(),
 					}
-				}
-
-				if statusCode != "-1" {
-					if len(httpStreams) == 2 {
-						// Got exactly two start times as we expect it
-						ttfb.WithLabelValues(flow.TargetApp, statusCode).
-							Observe(float64(httpStreams[1].FirstPackage.Sub(httpStreams[0].FirstPackage).Milliseconds()))
-					}
-
-					responseCodes.WithLabelValues(flow.TargetApp, statusCode).Inc()
-					e2eTime.WithLabelValues(flow.TargetApp, statusCode).
-						Observe(float64(flow.LastPackage.Sub(flow.FirstPackage).Milliseconds()))
+					requestFlows[cacheKey1] = newFlow
+					requestFlows[cacheKey2] = newFlow
 
 				}
-			}()
+			}
 		}
+
+		flow, exists := requestFlows[cacheKey1]
+		if !exists {
+			flow, exists = requestFlows[cacheKey2]
+			if !exists {
+				continue
+			}
+		}
+
+		if tcpPacket.FIN {
+			// This for sure is the end
+
+			flow.TCPEnd = time.Now()
+
+			// TODO: Do something with the values
+			if flow.StatusCode != "" {
+				app := ipMapper.Get(flow.TargetIP)
+				if app != "" {
+					httpRequests.WithLabelValues(app).Inc()
+					e2eTime.WithLabelValues(app, flow.StatusCode).
+						Observe(float64(flow.TCPEnd.Sub(flow.TCPStart).Milliseconds()))
+					httpTime.WithLabelValues(app, flow.StatusCode).
+						Observe(float64(flow.HTTPResponse.Sub(flow.HTTPRequest)))
+					responseCodes.WithLabelValues(app, flow.StatusCode).Inc()
+				}
+			}
+			// Remove to prevent memory explosion
+			delete(requestFlows, cacheKey1)
+			delete(requestFlows, cacheKey2)
+		}
+
+		if len(tcpPacket.Payload) == 0 {
+			continue
+		}
+
+		lines := strings.Split(string(tcpPacket.Payload), "\n")
+		if len(lines) == 0 {
+			continue
+		}
+
+		if !strings.Contains(lines[0], "HTTP/1.") {
+			continue
+		}
+
+		var statusCode string
+
+		// Figure out if it is a request or response
+		if strings.HasPrefix(lines[0], "HTTP/1.") {
+			// We have a response
+			parts := strings.Split(lines[0], " ")
+			flow.StatusCode = parts[1]
+			flow.HTTPResponse = time.Now()
+		} else {
+			// We have a request
+			flow.HTTPRequest = time.Now()
+		}
+
+		fmt.Println(statusCode)
 	}
 }
