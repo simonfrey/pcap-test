@@ -3,6 +3,7 @@ package streams
 import (
 	"bytes"
 	"fmt"
+	"net/http"
 	"pcaptest/pkg/tcp_packages"
 	"regexp"
 	"strconv"
@@ -61,11 +62,77 @@ func (s *Streams) AddPackage(src, dst string, pack *tcp_packages.Pack) {
 	s.streams[index].AddPackage(pack)
 }
 
+func (s *Streams) HttpStreams() []*HttpStream {
+	s.streamsMux.RLock()
+	defer s.streamsMux.RUnlock()
+
+	httpStreams := make([]*HttpStream, 0)
+	for _, stream := range s.streams {
+		if !stream.IsHTTP() {
+			continue
+		}
+		httpStream := HttpStream{
+			Source:       stream.Source,
+			FirstPackage: stream.FirstPackage,
+			Destination:  stream.Destination,
+		}
+		data := stream.Packages.Bytes()
+		if isRequest(string(data[:20])) {
+			// We have a request
+			method, path, _, headers := parseRequest(data)
+			httpStream.Type = REQUEST
+			httpStream.Method = method
+			httpStream.Path = path
+			httpStream.Headers = headers
+		} else {
+			// We have a response
+			statusCode, _, headers := parseResponse(data)
+			httpStream.Type = RESPONSE
+			httpStream.StatusCode = statusCode
+			httpStream.Headers = headers
+		}
+
+		httpStreams = append(httpStreams, &httpStream)
+	}
+	return httpStreams
+}
+
+type HttpStreamType string
+
+var (
+	REQUEST  HttpStreamType = "request"
+	RESPONSE HttpStreamType = "response"
+)
+
+type HttpStream struct {
+	Source       string
+	FirstPackage time.Time
+	Destination  string
+
+	Type HttpStreamType
+	// Both
+	Headers http.Header
+	// Request
+	Path   string
+	Method string
+	// Response
+	StatusCode string
+	BodyLen    int64
+}
+
 type Stream struct {
 	Source       string
 	FirstPackage time.Time
 	Destination  string
 	Packages     tcp_packages.Packages
+}
+
+func (s *Stream) IsHTTP() bool {
+	if s.Packages.Len() == 0 {
+		return false
+	}
+	payload := s.Packages.Bytes()
+	return bytes.Contains(payload, []byte("HTTP"))
 }
 
 func (s *Stream) AddPackage(pack *tcp_packages.Pack) {
@@ -123,6 +190,71 @@ func printRequest(payload []byte) string {
 	}
 
 	return fmt.Sprintf("%s %s %s\n%s", method, path, httpVersion, strings.Join(headers, "\n"))
+}
+
+func parseRequest(payload []byte) (method, path, httpVersion string, headers http.Header) {
+	lines := strings.Split(string(payload), "\n")
+
+	//First Line contains path and request
+	mainInfo := strings.Split(lines[0], " ")
+	method = mainInfo[0]
+	path = mainInfo[1]
+	httpVersion = mainInfo[2]
+	headers = parseHeaders(lines[1:])
+	return method, path, httpVersion, headers
+}
+
+func parseResponse(payload []byte) (statusCode, httpVersion string, headers http.Header) {
+	lines := strings.Split(string(payload), "\n")
+
+	//First Line contains path and request
+	mainInfo := strings.Split(lines[0], " ")
+	httpVersion = mainInfo[0]
+	statusCode = mainInfo[1]
+
+	headers = parseHeaders(lines[1:])
+	return statusCode, httpVersion, headers
+}
+
+func parseHeaders(lines []string) http.Header {
+	headers := make(http.Header)
+
+	chunked := false
+	lastHeaderIndex := 0
+	for k, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			lastHeaderIndex = k
+			break
+		}
+		if strings.Contains(line, "chunked") {
+			chunked = true
+		}
+		d := strings.Split(line, ":")
+		if len(d) != 2 {
+			break
+		}
+		headers.Set(d[0], d[1])
+	}
+
+	if chunked {
+		var totalBodySize int64 = 0
+		// We have a chunked response. Load data
+		for _, chunkLine := range lines[lastHeaderIndex:] {
+			cleanLine := strings.TrimSpace(strings.ToLower(chunkLine))
+			if hexRegex.MatchString(strings.TrimSpace(strings.ToLower(chunkLine))) {
+				// We have a hex number
+				decimal, err := strconv.ParseInt(cleanLine, 16, 64)
+				if err == nil {
+					totalBodySize += decimal
+				}
+				fmt.Println("CHUNK DATA:", chunkLine, "imt", decimal)
+			}
+		}
+		headers.Set("Content-Length", fmt.Sprintf("%d", totalBodySize))
+	}
+
+	return headers
 }
 
 var hexRegex = regexp.MustCompile(`^[0-9a-f]+$`)

@@ -2,8 +2,10 @@ package flows
 
 import (
 	"fmt"
+	"pcaptest/pkg/kube"
 	"pcaptest/pkg/streams"
 	"pcaptest/pkg/tcp_packages"
+	"strings"
 	"sync"
 	"time"
 )
@@ -11,12 +13,14 @@ import (
 type Flows struct {
 	flowsMux sync.RWMutex
 	flows    map[string]*Flow
+	ipMapper *kube.IPMapper
 }
 
-func NewFlows() *Flows {
+func NewFlows(ipMapper *kube.IPMapper) *Flows {
 	return &Flows{
 		flowsMux: sync.RWMutex{},
 		flows:    map[string]*Flow{},
+		ipMapper: ipMapper,
 	}
 }
 
@@ -56,10 +60,14 @@ func (f *Flows) AddPackage(src, dst string, p *tcp_packages.Pack) {
 	flow := f.GetFlow(src, dst)
 	if flow == nil {
 		flow = &Flow{
-			Initiator:   src,
-			Target:      dst,
-			LastPackage: time.Now(),
-			Streams:     streams.NewStreams(),
+			Initiator: src,
+			// TODO: get app name
+			InitiatorApp: f.ipMapper.Get(strings.Split(src, ":")[0]),
+			Target:       dst,
+			TargetApp:    f.ipMapper.Get(strings.Split(dst, ":")[0]),
+			FirstPackage: time.Now(),
+			LastPackage:  time.Now(),
+			Streams:      streams.NewStreams(),
 		}
 		f.SetFlow(src, dst, flow)
 	}
@@ -69,9 +77,12 @@ func (f *Flows) AddPackage(src, dst string, p *tcp_packages.Pack) {
 }
 
 type Flow struct {
-	Initiator   string
-	Target      string
-	LastPackage time.Time
+	Initiator    string
+	InitiatorApp string
+	Target       string
+	TargetApp    string
+	FirstPackage time.Time
+	LastPackage  time.Time
 
 	//muxStream sync.RWMutex
 	Streams streams.Streams
